@@ -1,6 +1,7 @@
 # Session 01 — Python Foundations & Synthetic Images
 
 **Date:** 2026-10-29  
+**Updated:** 2026-10-30  
 **Project:** Microlab  
 **Status:** In progress
 
@@ -62,6 +63,32 @@ This initially felt unfamiliar because x and y looked like scalar variables, but
 - Adopt explicit image coordinate conventions.
 - Keep the initial experiments independent of FastAPI and React.
 - Build incrementally, prioritising understanding over scaffolding.
+- Separate scientific model assumptions, geometry generation, and pixel rendering. The renderer permits overlaps (later circles overwrite earlier ones); placement determines whether overlaps are allowed.
+- Treat the image as a field of view into a larger sample. Sample centres from the visible rectangle `[0, width - 1] × [0, height - 1]` extended by the radius, rejecting circles that do not intersect it. Outside centres and partial visibility are valid; requested count means geometrically visible circles.
+- Enforce non-overlap using full circle geometry, including portions outside the field. Circle tangency is allowed.
+- Use one global proposal budget, counting every rejection. Return partial results with metadata when exhausted rather than treating crowding as an error.
+- Prefer predictable, non-mutating public interfaces. Allocate and mutate internally owned arrays for efficiency, then transfer ownership to the caller; never modify caller inputs.
+- Keep placement simple; defer a strategy interface until multiple concrete algorithms justify it.
+
+## Implementation milestones
+
+- `synthetic_image.py`: reusable, typed `generate_image()` and frozen `Circle` definitions; supports multiple circles, with saving and printing separate from generation.
+- `circle_placement.py`: seeded rejection sampling using a local NumPy RNG. Returns immutable accepted circles, requested count, and total attempts; accepted count is derived from the circles.
+- `validation.py`: shared integer validation. `random_circles_example.py` connects placement to rendering without coupling their implementations.
+- Tests cover geometry, boundaries, overlaps, array ownership, reproducibility, unchanged global RNG state, validation, and partial results.
+
+## Further concepts learned
+
+- `np.hypot(dx, dy)` computes Euclidean distance without explicitly squaring large coordinates. The renderer now uses it instead of the introductory squared-distance mask above.
+- `rng.uniform(low, high)` accepts array-like bounds and samples each coordinate using its corresponding bounds. `x, y = ...` unpacks the result, resembling JavaScript destructuring.
+- Rejection sampling proposes candidates and discards invalid ones. As space fills, finding an acceptable position becomes harder; the size of this effect remains to be measured.
+- Geometric intersection differs from raster visibility: a tiny intersecting circle portion may contain no pixel centre and therefore draw no pixels. Tangency counts as geometric intersection in the current model.
+
+## Workflow decisions
+
+- ChatGPT acts as scientific/technical supervisor for theory, architecture, and experiment design; Codex implements and tests.
+- The user verifies results locally and handles commits and pushes to GitHub. ChatGPT reviews committed code through the user-reported verified GitHub integration; that integration was not exercised during this journal update.
+- Preserve conceptual learning: discuss and understand the model and algorithms rather than delegating all understanding.
 
 ## Issues encountered
 
@@ -73,17 +100,23 @@ This initially felt unfamiliar because x and y looked like scalar variables, but
 ## Verification
 
 - **Confirmed:** Python environment reports `Environment ready!`.
-- **Still to confirm explicitly:** Saved PNG output and visual inspection of the generated image.
+- **Verified again on 2026-10-30:** `.venv\Scripts\python.exe -m unittest discover -v` passed all 15 tests (8 renderer, 7 placement).
+- **Previously executed:** The random-circle example reported 30/30 accepted in 61 attempts with a 256 × 256 field, radius 15, intensity 45, seed 42, and global budget 2000; it saved `random_circles.png`. Not rerun for this update.
+- **Still unconfirmed:** Visual inspection of the saved images. Passing tests does not establish segmentation accuracy or spatial neutrality of the placement process.
+
+## Deferred discussion
+
+- How partial visibility and boundary objects influence segmentation accuracy.
+- Whether the placement process introduces spatial bias.
 
 ## Next steps
 
-1. Refactor image generation into reusable, typed Python functions.
-2. Separate circle parameters from pixel manipulation.
-3. Extend the generator to multiple synthetic objects.
-4. Introduce reproducible random generation, followed by blur and noise.
+1. **Planned, not executed:** Investigate rejection sampling under increasing crowding. Hold field dimensions, radius, intensity, and global attempt budget fixed; increase requested population and record requested count, accepted count, and actual attempts with explicit seeds.
+2. Compare completion and budget exhaustion across populations and repeat seeds to distinguish crowding trends from individual random outcomes.
+3. Keep blur and noise as later extensions after understanding placement behaviour.
 
 ## Quick refresher
 
 NumPy broadcasting lets us express pixel-wise mathematics directly on coordinate arrays. A Boolean mask represents which pixels satisfy a condition; `image[mask] = value` updates those pixels.
 
-**Resume from:** Turning the single-circle experiment into reusable Python functions.
+**Resume from:** Designing the population sweep for the crowding experiment, using the existing `generate_circles()` result metadata.
