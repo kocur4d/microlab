@@ -20,6 +20,7 @@ class CirclePlacementResult:
     circles: tuple[Circle, ...]
     requested_count: int
     attempts: int
+    outcomes: tuple[bool, ...] | None = None
 
 
 def generate_circles(
@@ -30,6 +31,8 @@ def generate_circles(
     intensity: int,
     seed: int,
     max_attempts: int,
+    *,
+    record_history: bool = False,
 ) -> CirclePlacementResult:
     """Sample visible circles using one global rejection-sampling budget.
 
@@ -43,17 +46,25 @@ def generate_circles(
     with zero attempts. Every proposal, including invisible corner proposals,
     consumes an attempt. Results are deterministic for a fixed seed and NumPy
     environment; global random state is untouched. No rendering or I/O occurs.
+
+    When record_history is true, outcomes records acceptance in proposal order,
+    with exactly one boolean per actual attempt, including early-stopped runs.
     """
     _validate_parameters(width, height, count, radius, intensity, seed, max_attempts)
+    if not isinstance(record_history, bool):
+        raise TypeError("record_history must be a boolean")
     radius = float(radius)
     rng = np.random.default_rng(seed)
     accepted: list[Circle] = []
+    outcomes: list[bool] | None = [] if record_history else None
     attempts = 0
     while len(accepted) < count and attempts < max_attempts:
         x, y = rng.uniform(
             (-radius, -radius), (width - 1 + radius, height - 1 + radius)
         )
         attempts += 1
+        if outcomes is not None:
+            outcomes.append(False)
         nearest_x = min(max(x, 0.0), width - 1)
         nearest_y = min(max(y, 0.0), height - 1)
         if hypot(x - nearest_x, y - nearest_y) > radius:
@@ -64,7 +75,12 @@ def generate_circles(
         ):
             continue
         accepted.append(Circle(float(x), float(y), radius, intensity))
-    return CirclePlacementResult(tuple(accepted), count, attempts)
+        if outcomes is not None:
+            outcomes[-1] = True
+    return CirclePlacementResult(
+        tuple(accepted), count, attempts,
+        tuple(outcomes) if outcomes is not None else None,
+    )
 
 
 def _validate_parameters(
